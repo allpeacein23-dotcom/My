@@ -1,56 +1,40 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from innertube import InnerTube
+import yt_dlp
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-client = InnerTube("WEB")
-
 @app.get("/download")
 def download(url: str = None):
-    if not url: return {"status": "error", "message": "No URL"}
+    if not url: 
+        return {"status": "error", "message": "No URL provided"}
+    
     try:
-        # Link ထဲကနေ ဗီဒီယို ID ဆွဲထုတ်ခြင်း
-        video_id = url.split("v=")[-1].split("&")[0].split("/")[-1].split("?")[0]
-        data = client.player(video_id)
-        
-        # Video Details ယူခြင်း
-        video_details = data.get("videoDetails", {})
-        title = video_details.get("title", "YouTube Video")
-        thumbnail = video_details.get("thumbnail", {}).get("thumbnails", [{}])[-1].get("url", "")
-        
-        # Streaming Data ထဲက Link တွေကို လိုက်ရှာခြင်း
-        streaming_data = data.get("streamingData", {})
-        formats = streaming_data.get("formats", []) + streaming_data.get("adaptiveFormats", [])
-        
-        download_link = ""
-        
-        # ပထမဆုံးအဆင့်: တိုက်ရိုက် 'url' ပါတဲ့ format ကို အရင်ရှာမယ်
-        for f in formats:
-            if "url" in f and f.get("url"):
-                download_link = f["url"]
-                break
-        
-        # ဒုတိယအဆင့်: အကယ်၍ url တိုက်ရိုက်မပါရင် signatureCipher ထဲက လိုက်ခွဲထုတ်မယ်
-        if not download_link:
-            for f in formats:
-                if "signatureCipher" in f or "cipher" in f:
-                    cipher = f.get("signatureCipher", f.get("cipher", ""))
-                    import urllib.parse
-                    cipher_data = urllib.parse.parse_qs(cipher)
-                    if "url" in cipher_data:
-                        download_link = cipher_data["url"][0]
-                        break
-
-        if not download_link:
-            return {"status": "error", "message": "Could not extract download link."}
-            
-        return {
-            "status": "success",
-            "title": title,
-            "thumbnail": thumbnail,
-            "download_link": download_link
+        # yt-dlp အတွက် settings ပြင်ဆင်ခြင်း
+        ydl_opts = {
+            'format': 'best',  # အသံရော ဗီဒီယိုရော ပါတဲ့ အကောင်းဆုံး format ကို ယူမယ်
+            'quiet': True,
+            'no_warnings': True,
         }
+        
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            # ဗီဒီယိုရဲ့ အချက်အလက်တွေကို လှမ်းယူခြင်း
+            info = ydl.extract_info(url, download=False)
+            
+            title = info.get('title', 'YouTube Video')
+            thumbnail = info.get('thumbnail', '')
+            download_link = info.get('url', '') # တိုက်ရိုက် ဒေါင်းလုဒ်လင့်ခ်
+            
+            if not download_link:
+                return {"status": "error", "message": "Could not find a direct download link"}
+                
+            return {
+                "status": "success",
+                "title": title,
+                "thumbnail": thumbnail,
+                "download_link": download_link
+            }
+            
     except Exception as e:
         return {"status": "error", "message": str(e)}
