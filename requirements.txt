@@ -1,3 +1,3 @@
 fastapi
 uvicorn
-innertube
+yt-dlp
